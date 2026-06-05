@@ -1,46 +1,32 @@
 const express = require('express');
-const axios   = require('axios');
-
-const app  = express();
-const PORT = process.env.PORT || 3000;
-
-// ⚠️ Stesso secret che usi già in Base44
-const PROXY_SECRET      = process.env.PROXY_SECRET || 'BOB_PROXY_SECRET_2024';
-// URL del tuo proxy su Siteground
-const SITEGROUND_PROXY  = process.env.SITEGROUND_URL || 'https://bobconnector.com/proxy.php';
-
+const app = express();
 app.use(express.json());
 
-app.post('/proxy', async (req, res) => {
+const PROXY_SECRET = process.env.PROXY_SECRET || 'MY_RAILWAY_SECRET_2024';
+const BOB_URL = 'https://bobconnector.com/bobproxy.php';
+const BOB_SECRET = process.env.BOB_SECRET;
 
-    // 1. Auth — stesso header che usa Base44
-    const secret = req.headers['x-proxy-secret'];
-    if (secret !== PROXY_SECRET) {
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
+app.post('/', async (req, res) => {
+  // Verifica secret
+  if (req.headers['x-proxy-secret'] !== PROXY_SECRET) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
 
-    // 2. Rigira la richiesta IDENTICA verso Siteground
-    try {
-        const response = await axios({
-            method: 'POST',
-            url: SITEGROUND_PROXY,
-            headers: {
-                'Content-Type': 'application/json',
-                'x-proxy-secret': PROXY_SECRET,  // stesso secret verso Siteground
-            },
-            data: req.body,  // body identico, non lo tocchiamo
-            timeout: 20000,
-            validateStatus: () => true,
-        });
+  try {
+    const response = await fetch(BOB_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Proxy-Secret': BOB_SECRET,
+      },
+      body: JSON.stringify(req.body),
+    });
 
-        res.status(response.status).json(response.data);
-
-    } catch (err) {
-        res.status(502).json({ error: 'Relay failed', details: err.message });
-    }
+    const text = await response.text();
+    res.status(response.status).send(text);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// Health check
-app.get('/', (req, res) => res.json({ status: 'BOB Relay online' }));
-
-app.listen(PORT, () => console.log(`BOB Relay in ascolto sulla porta ${PORT}`));
+app.listen(process.env.PORT || 3000, () => console.log('Proxy running'));
